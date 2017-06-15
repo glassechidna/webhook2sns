@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  Name:
+    Type: String
+Resources:
+  Topic:
+    Type: AWS::SNS::Topic
+  Api:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Ref Name
+  Deployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - PostMethod
+    Properties:
+      RestApiId: !Ref Api
+      StageName: DummyStage
+  Stage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref Deployment
+      RestApiId: !Ref Api
+      StageName: !Ref Name
+  PostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !GetAtt Api.RootResourceId
+      RestApiId: !Ref Api
+      MethodResponses:
+        - StatusCode: 200
+      Integration:
+        Credentials: !GetAtt RestApiRole.Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+        Type: AWS
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:sns:action/Publish
+        RequestParameters:
+          integration.request.querystring.TopicArn: !Sub "'${Topic}'"
+          integration.request.querystring.Message: method.request.body
+  RestApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Effect: Allow
+      Policies:
+        - PolicyName: SnsPublish
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Action: sns:Publish
+                Resource: !Ref Topic
+                Effect: Allow
+Outputs:
+  WebhookUrl:
+    Value: !Sub https://${Api}.execute-api.${AWS::Region}.amazonaws.com/${Name}
